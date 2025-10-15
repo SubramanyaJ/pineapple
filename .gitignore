@@ -1,0 +1,8 @@
+# /.gitignore
+
+/target
+
+# https://doc.rust-lang.org/cargo/guide/cargo-toml-vs-cargo-lock.html
+# I cannot believe I had to refer the internet for my gitignore file
+# But here we are in 2025
+# /Cargo.lock

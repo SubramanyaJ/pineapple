@@ -1,0 +1,75 @@
+# /Cargo.toml
+# https://doc.rust-lang.org/cargo/reference/cargo-targets.html
+
+####################
+[package]
+
+name = "pineapple"
+version = "1.0.0"
+edition = "2024"
+authors = ["Subramanya J <subramanyajaradhya@gmail.com>"]
+description = "Implementation of a quantum safe communication system"
+readme = "README"
+repository = "https://github.com/SubramanyaJ/pineapple"
+# I might think of publishing this if it turns out good
+# But until then :
+publish = false
+# homepage and 
+
+####################
+[dependencies]
+
+anyhow = "1"
+# https://docs.rs/anyhow/latest/anyhow/
+# Provides a handy error typeo
+
+blake3 = "1"
+# https://docs.rs/blake3/latest/blake3/
+# A hashing function, based off ChaCha20
+# Check if I can parallelize this by the 20th
+
+chacha20poly1305 = "0.10"
+# https://docs.rs/chacha20poly1305/latest/chacha20poly1305/
+# The AEAD function used
+# Check if I can replace this with AES-GCM and parallelize
+# Maybe I can try exposing the ChaCha20 algorithm I wrote in C first
+# to check how this cross porting works
+
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+# https://docs.rs/ed25519-dalek/latest/ed25519_dalek/
+# Elliptic curve implementation
+
+hex = "0.4"
+# https://docs.rs/hex/latest/hex/
+# Provides the 0x functionality, but works on any data representation
+
+ml-kem = "0.2"
+# https://docs.rs/ml-kem/latest/ml_kem/
+# FIPS 203 (KYBER) implementation
+# Replacing this will be hard
+
+rand = "0.8"
+# https://docs.rs/rand/latest/rand/
+# https://rust-random.github.io/book/crates.html
+# All documentation points to this being a pseudo
+# random number generator
+# Replacing this should be easier than the rest
+
+sha3 = "0.10"
+# https://docs.rs/sha3/latest/sha3/
+# Provides all 6 FIPS PUB 202 hashing functions
+
+x25519-dalek = { version = "2", features = ["reusable_secrets", "static_secrets"] }
+# https://docs.rs/x25519-dalek/latest/x25519_dalek/
+# Diffie-Hellman Key Exchange 
+
+####################
+[lib]
+# My own internal library
+name = "pineapple"
+path = "src/lib.rs"
+
+####################
+[[bin]]
+name = "pineapple"
+path = "src/main.rs"

@@ -1,0 +1,4 @@
+pineapple
+=========
+
+A simple serverless variant of the PQXDH protocol implemented in Rust.
