@@ -1,3 +1,7 @@
+/**
+ * pineapple/src/pqxdh/handshake.rs
+ */
+
 use super::types::{User, PQXDHInitOutput, PQXDHInitMessage};
 use super::conversions::{ed25519_sk_to_x25519, ed25519_pk_to_x25519};
 use anyhow::{Context, Error};
@@ -9,10 +13,31 @@ use ml_kem::{
 use sha3::{Shake256, digest::{ExtendableOutput, Update}};
 use x25519_dalek as x25519;
 
+/**
+ * TODO-RENAME : Function and parameter names are mid
+ */
 pub fn init_pqxdh(alice: &User, bob: &User) -> Result<PQXDHInitOutput, Error> {
+    /**
+     * TODO : This is deprecated, so I have to replace this
+     * It seems to be just a rename though...
+     * Woah, the source is available at :
+     * https://docs.rs/rand/latest/src/rand/lib.rs.html#123-125
+     * That'll come in handy if I have to make that
+     * random number upgrade.
+     * Also I need to refer to the OSDev wiki for that
+     * https://wiki.osdev.org/Random_Number_Generator
+     *
+     * And then there is this for the benchmarking
+     * https://simul.iro.umontreal.ca/testu01/tu01.html
+     */
     let mut rng = rand::thread_rng();
 
     // Verify that the prekeys actually come from the intended recipient
+    /**
+     * Here the return types needs to be Ok(()),
+     * else an error is returned.
+     * The library does the heavy lifting here.
+     */
     bob.identity_public_key
         .verify_strict(bob.x25519_prekey.public_key.as_bytes(), &bob.x25519_prekey.signature)
         .with_context(|| "failed to verify X25519 prekey")?;
