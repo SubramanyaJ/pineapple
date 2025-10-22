@@ -1,9 +1,10 @@
+// ./ratchet/mod.rs
 mod types;
 mod kdf;
 mod encryption;
 
 pub use types::{RatchetState, Message, MessageHeader};
-pub use encryption::{send_message, receive_message};
+pub use encryption::{send_message, send_bytes, receive_message};
 pub use kdf::{kdf_root_key, kdf_chain_key};
 
 /// Initialize Alice's ratchet state with shared key from PQXDH

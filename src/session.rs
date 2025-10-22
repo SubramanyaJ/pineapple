@@ -1,3 +1,4 @@
+// ./session.rs
 use crate::pqxdh::{self, User, PQXDHInitMessage};
 use crate::ratchet::{self, RatchetState, Message};
 use anyhow::Result;
@@ -42,13 +43,18 @@ impl Session {
         })
     }
 
-    /// Send an encrypted message
+    /// Send an encrypted message (text - kept for backwards compatibility)
     pub fn send(&mut self, plaintext: &str) -> Result<Message> {
         ratchet::send_message(&mut self.ratchet, plaintext, &self.associated_data)
     }
 
-    /// Receive and decrypt a message
-    pub fn receive(&mut self, message: Message) -> Result<String> {
+    /// Send encrypted bytes (for files and structured messages)
+    pub fn send_bytes(&mut self, data: &[u8]) -> Result<Message> {
+        ratchet::send_bytes(&mut self.ratchet, data, &self.associated_data)
+    }
+
+    /// Receive and decrypt a message (returns bytes)
+    pub fn receive(&mut self, message: Message) -> Result<Vec<u8>> {
         ratchet::receive_message(&mut self.ratchet, message, &self.associated_data)
     }
 }

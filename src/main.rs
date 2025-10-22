@@ -1,8 +1,9 @@
+// ./main.rs
 use anyhow::{Result, Context};
-use pineapple::{pqxdh, Session, network};
+use pineapple::{pqxdh, Session, network, messages};
 use std::env;
 use std::net::{TcpListener, TcpStream};
-use std::io::{self, BufRead, Write, Read};
+use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use ml_kem::KemCore;
@@ -84,6 +85,7 @@ fn run_alice(port: &str) -> Result<()> {
 
     println!("Session established!\n");
     println!("Type your message and press Enter.");
+    println!("To send a file, type: !/path/to/file.txt");
     println!("Press Ctrl+C to exit.\n");
 
     // Start chat
@@ -120,6 +122,7 @@ fn run_bob(address: &str) -> Result<()> {
 
     println!("Session established!\n");
     println!("Type your message and press Enter.");
+    println!("To send a file, type: !/path/to/file.txt");
     println!("Press Ctrl+C to exit.\n");
 
     // Start chat
@@ -151,31 +154,59 @@ fn chat_loop(session: Session, mut stream: TcpStream) -> Result<()> {
         loop {
             match network::receive_message(&mut stream) {
                 Ok(msg_data) => {
-                    // Deserialize the message
                     match network::deserialize_ratchet_message(&msg_data) {
                         Ok(msg) => {
                             let mut sess = session_clone.lock().unwrap();
                             match sess.receive(msg) {
-                                Ok(plaintext) => {
-                                    println!("\nPeer: {}", plaintext);
-                                    print!("\nYou: ");
-                                    io::stdout().flush().unwrap();
+                                Ok(plaintext_bytes) => {
+                                    match messages::deserialize_message(&plaintext_bytes) {
+                                        Ok(messages::MessageType::Text(text)) => {
+                                            // Clear current line and print message
+                                            print!("\r\x1b[K");  // \r moves to start, \x1b[K clears line
+                                            println!("Peer: {}", text);
+                                            print!("You: ");
+                                            io::stdout().flush().unwrap();
+                                        }
+                                        Ok(messages::MessageType::File { filename, data }) => {
+                                            let save_path = format!("received_{}", filename);
+                                            print!("\r\x1b[K");
+                                            match std::fs::write(&save_path, data) {
+                                                Ok(_) => {
+                                                    println!("Received file: {} -> {}", filename, save_path);
+                                                }
+                                                Err(e) => {
+                                                    eprintln!("Failed to save file: {}", e);
+                                                }
+                                            }
+                                            print!("You: ");
+                                            io::stdout().flush().unwrap();
+                                        }
+                                        Err(e) => {
+                                            print!("\r\x1b[K");
+                                            eprintln!("Failed to parse message: {}", e);
+                                            print!("You: ");
+                                            io::stdout().flush().unwrap();
+                                        }
+                                    }
                                 }
                                 Err(e) => {
+                                    print!("\r\x1b[K");
                                     eprintln!("Failed to decrypt message: {}", e);
-                                    print!("\nYou: ");
+                                    print!("You: ");
                                     io::stdout().flush().unwrap();
                                 }
                             }
                         }
                         Err(e) => {
+                            print!("\r\x1b[K");
                             eprintln!("Failed to deserialize message: {}", e);
-                            print!("\nYou: ");
+                            print!("You: ");
                             io::stdout().flush().unwrap();
                         }
                     }
                 }
                 Err(_) => {
+                    print!("\r\x1b[K");
                     println!("Connection closed by peer.");
                     std::process::exit(0);
                 }
@@ -196,20 +227,51 @@ fn chat_loop(session: Session, mut stream: TcpStream) -> Result<()> {
             continue;
         }
 
-        let mut sess = session.lock().unwrap();
-        match sess.send(&line) {
-            Ok(msg) => {
-                drop(sess); // Release lock before IO
-                
-                // Serialize and send the message
-                let msg_data = network::serialize_ratchet_message(&msg);
-                if let Err(e) = network::send_message(&mut stream, &msg_data) {
-                    eprintln!("Failed to send message: {}", e);
-                    break;
+        // Parse input to detect file transfer
+        match messages::parse_input(&line) {
+            Ok(messages::MessageType::Text(text)) => {
+                // Send text message
+                let msg_bytes = messages::serialize_message(&messages::MessageType::Text(text));
+                let mut sess = session.lock().unwrap();
+                match sess.send_bytes(&msg_bytes) {
+                    Ok(msg) => {
+                        drop(sess); // Release lock before IO
+                        let msg_data = network::serialize_ratchet_message(&msg);
+                        if let Err(e) = network::send_message(&mut stream, &msg_data) {
+                            eprintln!("Failed to send message: {}", e);
+                            break;
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to encrypt message: {}", e);
+                    }
+                }
+            }
+            Ok(messages::MessageType::File { filename, data }) => {
+                // Send file
+                println!("Sending file: {} ({} bytes)", filename, data.len());
+                let msg_bytes = messages::serialize_message(&messages::MessageType::File {
+                    filename: filename.clone(),
+                    data,
+                });
+                let mut sess = session.lock().unwrap();
+                match sess.send_bytes(&msg_bytes) {
+                    Ok(msg) => {
+                        drop(sess); // Release lock before IO
+                        let msg_data = network::serialize_ratchet_message(&msg);
+                        if let Err(e) = network::send_message(&mut stream, &msg_data) {
+                            eprintln!("Failed to send file: {}", e);
+                            break;
+                        }
+                        println!("File sent: {}", filename);
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to encrypt file: {}", e);
+                    }
                 }
             }
             Err(e) => {
-                eprintln!("Failed to encrypt message: {}", e);
+                eprintln!("Error: {}", e);
             }
         }
 
