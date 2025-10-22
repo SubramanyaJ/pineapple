@@ -28,10 +28,11 @@ blake3 = "1"
 # A hashing function, based off ChaCha20
 # Check if I can parallelize this by the 20th
 
-chacha20poly1305 = "0.10"
+# chacha20poly1305 = "0.10"
 # https://docs.rs/chacha20poly1305/latest/chacha20poly1305/
 # The AEAD function used
 # Check if I can replace this with AES-GCM and parallelize
+aes-gcm = "0.10"
 # Maybe I can try exposing the ChaCha20 algorithm I wrote in C first
 # to check how this cross porting works
 
