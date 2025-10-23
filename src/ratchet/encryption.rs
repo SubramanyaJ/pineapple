@@ -1,8 +1,11 @@
-// ./ratchet/encryption.rs
+/**
+ * ratchet/encryption.rs
+ */
+
 use super::types::{RatchetState, Message, MessageHeader};
 use super::kdf::{kdf_root_key, kdf_chain_key};
 use aes_gcm::{Aes256Gcm, KeyInit, aead::{AeadMut, Payload}};
-use anyhow::{Error, Context};
+use anyhow::{Error};
 use x25519_dalek as x25519;
 
 pub fn send_message(state: &mut RatchetState, plaintext: &str, additional_data: &[u8]) -> Result<Message, Error> {

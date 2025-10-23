@@ -1,4 +1,7 @@
-// ./ratchet/mod.rs
+/**
+ * ratchet/mod.rs
+ */
+
 mod types;
 mod kdf;
 mod encryption;

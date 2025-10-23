@@ -1,5 +1,5 @@
 /**
- * pineappple/src/pqxdh/mod.rs
+ * pqxdh/mod.rs
  */
 
 /* The child modules functionalities in this module... */

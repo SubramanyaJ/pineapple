@@ -1,5 +1,5 @@
 /**
- * pineapple/src/pqxdh/conversions.rs
+ * pqxdh/conversions.rs
  */
 
 use ed25519_dalek as ed25519;

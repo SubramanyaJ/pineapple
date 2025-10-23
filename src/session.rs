@@ -1,4 +1,7 @@
-// ./session.rs
+/**
+ * session.rs
+ */
+
 use crate::pqxdh::{self, User, PQXDHInitMessage};
 use crate::ratchet::{self, RatchetState, Message};
 use anyhow::Result;

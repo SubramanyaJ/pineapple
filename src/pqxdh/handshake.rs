@@ -1,11 +1,10 @@
 /**
- * pineapple/src/pqxdh/handshake.rs
+ * pqxdh/handshake.rs
  */
 
 use super::types::{User, PQXDHInitOutput, PQXDHInitMessage};
 use super::conversions::{ed25519_sk_to_x25519, ed25519_pk_to_x25519};
 use anyhow::{Context, Error};
-use ed25519_dalek::Verifier;
 use ml_kem::{
     EncodedSizeUser,
     kem::{Encapsulate, Decapsulate},

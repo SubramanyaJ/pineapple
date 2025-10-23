@@ -1,4 +1,7 @@
-// ./main.rs
+/**
+ * main.rs
+ */
+
 use anyhow::{Result, Context};
 use pineapple::{pqxdh, Session, network, messages};
 use std::env;
@@ -6,7 +9,6 @@ use std::net::{TcpListener, TcpStream};
 use std::io::{self, BufRead, Write};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use ml_kem::KemCore;
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -108,7 +110,7 @@ fn run_bob(address: &str) -> Result<()> {
     let mut bob = pqxdh::User::new();
 
     // Receive Alice's public keys
-    let alice = receive_public_keys(&mut stream)?;
+    let _alice = receive_public_keys(&mut stream)?;
 
     // Send Bob's public keys to Alice
     send_public_keys(&mut stream, &bob)?;

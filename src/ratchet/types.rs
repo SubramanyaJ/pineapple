@@ -1,3 +1,7 @@
+/**
+ * ratchet/types.rs
+ */
+
 use x25519_dalek as x25519;
 
 pub struct RatchetState {
