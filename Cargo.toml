@@ -64,6 +64,8 @@ x25519-dalek = { version = "2", features = ["reusable_secrets", "static_secrets"
 # https://docs.rs/x25519-dalek/latest/x25519_dalek/
 # Diffie-Hellman Key Exchange 
 
+crossterm="0.28"
+
 ####################
 [lib]
 # My own internal library

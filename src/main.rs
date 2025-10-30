@@ -1,14 +1,19 @@
-/**
- * main.rs
- */
-
-use anyhow::{Result, Context};
-use pineapple::{pqxdh, Session, network, messages};
-use std::env;
-use std::net::{TcpListener, TcpStream};
-use std::io::{self, BufRead, Write};
-use std::sync::{Arc, Mutex};
-use std::thread;
+use anyhow::{Context, Result};
+use crossterm::{
+    event::{self, Event, KeyCode, KeyModifiers},
+    terminal,
+};
+use pineapple::{messages, network, pqxdh, Session};
+use std::{
+    env,
+    io::{self, Write},
+    net::{TcpListener, TcpStream},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    },
+    thread,
+};
 
 fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
@@ -27,7 +32,7 @@ fn main() -> Result<()> {
                 std::process::exit(1);
             }
             let port = &args[2];
-            run_alice(port)?;
+            run_alice(port)?
         }
         "connect" => {
             if args.len() < 3 {
@@ -35,7 +40,7 @@ fn main() -> Result<()> {
                 std::process::exit(1);
             }
             let address = &args[2];
-            run_bob(address)?;
+            run_bob(address)?
         }
         _ => {
             eprintln!("Invalid mode. Use 'listen' or 'connect'");
@@ -53,7 +58,8 @@ fn run_alice(port: &str) -> Result<()> {
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port))
         .context("Failed to bind to port")?;
 
-    let (mut stream, addr) = listener.accept()
+    let (mut stream, addr) = listener
+        .accept()
         .context("Failed to accept connection")?;
 
     println!("Incoming connection from {}", addr);
@@ -68,29 +74,25 @@ fn run_alice(port: &str) -> Result<()> {
     }
 
     println!("Connection accepted!");
-    println!("Performing handshake...\n");
+    println!("Performing handshake...");
 
-    // Generate Alice's keys
     let alice = pqxdh::User::new();
-
-    // Send Alice's public keys to Bob
     send_public_keys(&mut stream, &alice)?;
 
-    // Receive Bob's public keys
     let mut bob = receive_public_keys(&mut stream)?;
 
-    // Complete handshake: Alice initiates PQXDH
     let (session, init_message) = Session::new_initiator(&alice, &mut bob)?;
 
-    // Send init message to Bob
-    network::send_message(&mut stream, &network::serialize_pqxdh_init_message(&init_message))?;
+    network::send_message(
+        &mut stream,
+        &network::serialize_pqxdh_init_message(&init_message),
+    )?;
 
-    println!("Session established!\n");
+    println!("Session established!");
     println!("Type your message and press Enter.");
-    println!("To send a file, type: !/path/to/file.txt");
-    println!("Press Ctrl+C to exit.\n");
+    println!("To send a file, type !path/to/file.txt");
+    println!("Press Ctrl+L to clear screen. Press Ctrl+C to exit.");
 
-    // Start chat
     chat_loop(session, stream)?;
 
     Ok(())
@@ -104,30 +106,23 @@ fn run_bob(address: &str) -> Result<()> {
         .context("Failed to connect to peer")?;
 
     println!("Connected!");
-    println!("Performing handshake...\n");
+    println!("Performing handshake...");
 
-    // Generate Bob's keys
     let mut bob = pqxdh::User::new();
 
-    // Receive Alice's public keys
-    let _alice = receive_public_keys(&mut stream)?;
-
-    // Send Bob's public keys to Alice
+    let alice = receive_public_keys(&mut stream)?;
     send_public_keys(&mut stream, &bob)?;
 
-    // Receive init message from Alice
     let init_message_data = network::receive_message(&mut stream)?;
     let init_message = network::deserialize_pqxdh_init_message(&init_message_data)?;
 
-    // Complete handshake: Bob responds to PQXDH
     let session = Session::new_responder(&mut bob, &init_message)?;
 
-    println!("Session established!\n");
+    println!("Session established!");
     println!("Type your message and press Enter.");
-    println!("To send a file, type: !/path/to/file.txt");
-    println!("Press Ctrl+C to exit.\n");
+    println!("To send a file, type !path/to/file.txt");
+    println!("Press Ctrl+L to clear screen. Press Ctrl+C to exit.");
 
-    // Start chat
     chat_loop(session, stream)?;
 
     Ok(())
@@ -149,139 +144,223 @@ fn chat_loop(session: Session, mut stream: TcpStream) -> Result<()> {
     let stream_clone = stream.try_clone()?;
     let session = Arc::new(Mutex::new(session));
     let session_clone = Arc::clone(&session);
+    let input_buffer = Arc::new(Mutex::new(String::new()));
+    let input_buffer_clone = Arc::clone(&input_buffer);
+    let running = Arc::new(AtomicBool::new(true));
+    let running_clone = Arc::clone(&running);
 
-    // Spawn receiving thread
+    terminal::enable_raw_mode()?;
+
     let receive_handle = thread::spawn(move || {
         let mut stream = stream_clone;
+
         loop {
+            if !running_clone.load(Ordering::SeqCst) {
+                break;
+            }
+
             match network::receive_message(&mut stream) {
                 Ok(msg_data) => {
+                    if msg_data == b"\x1B[2J\x1B[H" {
+                        print!("\x1B[2J\x1B[H");
+                        let buf = input_buffer_clone.lock().unwrap();
+                        print!("You: {}", *buf);
+                        io::stdout().flush().unwrap();
+                        continue;
+                    }
+
                     match network::deserialize_ratchet_message(&msg_data) {
                         Ok(msg) => {
                             let mut sess = session_clone.lock().unwrap();
+
                             match sess.receive(msg) {
                                 Ok(plaintext_bytes) => {
                                     match messages::deserialize_message(&plaintext_bytes) {
                                         Ok(messages::MessageType::Text(text)) => {
-                                            // Clear current line and print message
-                                            print!("\r\x1b[K");  // \r moves to start, \x1b[K clears line
+                                            let buf = input_buffer_clone.lock().unwrap();
+                                            print!("\r\x1B[K");
                                             println!("Peer: {}", text);
-                                            print!("You: ");
+                                            print!("You: {}", *buf);
                                             io::stdout().flush().unwrap();
                                         }
                                         Ok(messages::MessageType::File { filename, data }) => {
                                             let save_path = format!("received_{}", filename);
-                                            print!("\r\x1b[K");
+                                            let buf = input_buffer_clone.lock().unwrap();
+                                            print!("\r\x1B[K");
+
                                             match std::fs::write(&save_path, data) {
                                                 Ok(_) => {
-                                                    println!("Received file: {} -> {}", filename, save_path);
+                                                    println!(
+                                                        "Received file - {} -> {}",
+                                                        filename,
+                                                        save_path,
+                                                    );
                                                 }
                                                 Err(e) => {
                                                     eprintln!("Failed to save file: {}", e);
                                                 }
                                             }
-                                            print!("You: ");
+
+                                            print!("You: {}", *buf);
                                             io::stdout().flush().unwrap();
                                         }
                                         Err(e) => {
-                                            print!("\r\x1b[K");
+                                            let buf = input_buffer_clone.lock().unwrap();
+                                            print!("\r\x1B[K");
                                             eprintln!("Failed to parse message: {}", e);
-                                            print!("You: ");
+                                            print!("You: {}", *buf);
                                             io::stdout().flush().unwrap();
                                         }
                                     }
                                 }
                                 Err(e) => {
-                                    print!("\r\x1b[K");
+                                    let buf = input_buffer_clone.lock().unwrap();
+                                    print!("\r\x1B[K");
                                     eprintln!("Failed to decrypt message: {}", e);
-                                    print!("You: ");
+                                    print!("You: {}", *buf);
                                     io::stdout().flush().unwrap();
                                 }
                             }
                         }
                         Err(e) => {
-                            print!("\r\x1b[K");
+                            let buf = input_buffer_clone.lock().unwrap();
+                            print!("\r\x1B[K");
                             eprintln!("Failed to deserialize message: {}", e);
-                            print!("You: ");
+                            print!("You: {}", *buf);
                             io::stdout().flush().unwrap();
                         }
                     }
                 }
                 Err(_) => {
-                    print!("\r\x1b[K");
+                    print!("\r\x1B[K");
                     println!("Connection closed by peer.");
+                    terminal::disable_raw_mode().unwrap();
                     std::process::exit(0);
                 }
             }
         }
     });
 
-    // Main sending loop
-    let stdin = io::stdin();
     print!("You: ");
     io::stdout().flush()?;
 
-    for line in stdin.lock().lines() {
-        let line = line?;
-        if line.trim().is_empty() {
-            print!("You: ");
-            io::stdout().flush()?;
-            continue;
-        }
+    loop {
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(k) = event::read()? {
+                let mut buf = input_buffer.lock().unwrap();
 
-        // Parse input to detect file transfer
-        match messages::parse_input(&line) {
-            Ok(messages::MessageType::Text(text)) => {
-                // Send text message
-                let msg_bytes = messages::serialize_message(&messages::MessageType::Text(text));
-                let mut sess = session.lock().unwrap();
-                match sess.send_bytes(&msg_bytes) {
-                    Ok(msg) => {
-                        drop(sess); // Release lock before IO
-                        let msg_data = network::serialize_ratchet_message(&msg);
-                        if let Err(e) = network::send_message(&mut stream, &msg_data) {
-                            eprintln!("Failed to send message: {}", e);
-                            break;
+                match (k.code, k.modifiers) {
+                    (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
+                        print!("\r\n");
+                        running.store(false, Ordering::SeqCst);
+                        terminal::disable_raw_mode()?;
+                        std::process::exit(0);
+                    }
+                    (KeyCode::Char('l'), KeyModifiers::CONTROL) => {
+                        let clear_msg = b"\x1B[2J\x1B[H";
+                        if network::send_message(&mut stream, clear_msg).is_ok() {
+                            print!("\x1B[2J\x1B[H");
+                            buf.clear();
+                            print!("You: ");
+                            io::stdout().flush()?;
                         }
                     }
-                    Err(e) => {
-                        eprintln!("Failed to encrypt message: {}", e);
-                    }
-                }
-            }
-            Ok(messages::MessageType::File { filename, data }) => {
-                // Send file
-                println!("Sending file: {} ({} bytes)", filename, data.len());
-                let msg_bytes = messages::serialize_message(&messages::MessageType::File {
-                    filename: filename.clone(),
-                    data,
-                });
-                let mut sess = session.lock().unwrap();
-                match sess.send_bytes(&msg_bytes) {
-                    Ok(msg) => {
-                        drop(sess); // Release lock before IO
-                        let msg_data = network::serialize_ratchet_message(&msg);
-                        if let Err(e) = network::send_message(&mut stream, &msg_data) {
-                            eprintln!("Failed to send file: {}", e);
-                            break;
+                    (KeyCode::Enter, _) => {
+                        let line = buf.clone();
+                        buf.clear();
+
+                        if !line.trim().is_empty() {
+                            match messages::parse_input(&line) {
+                                Ok(messages::MessageType::Text(text)) => {
+                                    print!("\r\x1B[K");
+                                    println!("You: {}", text);
+
+                                    let msg_bytes = messages::serialize_message(
+                                        &messages::MessageType::Text(text),
+                                    );
+                                    let mut sess = session.lock().unwrap();
+
+                                    match sess.send_bytes(&msg_bytes) {
+                                        Ok(msg) => {
+                                            drop(sess);
+                                            let msg_data =
+                                                network::serialize_ratchet_message(&msg);
+
+                                            if let Err(e) = network::send_message(
+                                                &mut stream,
+                                                &msg_data,
+                                            ) {
+                                                eprintln!("Failed to send message: {}", e);
+                                                break Ok(());
+                                            }
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Failed to encrypt message: {}", e);
+                                        }
+                                    }
+                                }
+                                Ok(messages::MessageType::File { filename, data }) => {
+                                    print!("\r\x1B[K");
+                                    println!(
+                                        "Sending file: {} ({} bytes)",
+                                        filename,
+                                        data.len(),
+                                    );
+
+                                    let msg_bytes = messages::serialize_message(
+                                        &messages::MessageType::File {
+                                            filename: filename.clone(),
+                                            data,
+                                        },
+                                    );
+                                    let mut sess = session.lock().unwrap();
+
+                                    match sess.send_bytes(&msg_bytes) {
+                                        Ok(msg) => {
+                                            drop(sess);
+                                            let msg_data =
+                                                network::serialize_ratchet_message(&msg);
+
+                                            if let Err(e) = network::send_message(
+                                                &mut stream,
+                                                &msg_data,
+                                            ) {
+                                                eprintln!("Failed to send file: {}", e);
+                                                break Ok(());
+                                            }
+
+                                            println!("File sent: {}", filename);
+                                        }
+                                        Err(e) => {
+                                            eprintln!("Failed to encrypt file: {}", e);
+                                        }
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!("Error: {}", e);
+                                }
+                            }
                         }
-                        println!("File sent: {}", filename);
+
+                        print!("You: ");
+                        io::stdout().flush()?;
                     }
-                    Err(e) => {
-                        eprintln!("Failed to encrypt file: {}", e);
+                    (KeyCode::Backspace, _) => {
+                        if !buf.is_empty() {
+                            buf.pop();
+                            print!("\r\x1B[KYou: {}", *buf);
+                            io::stdout().flush()?;
+                        }
                     }
+                    (KeyCode::Char(c), _) => {
+                        buf.push(c);
+                        print!("{}", c);
+                        io::stdout().flush()?;
+                    }
+                    _ => {}
                 }
-            }
-            Err(e) => {
-                eprintln!("Error: {}", e);
             }
         }
-
-        print!("\nYou: ");
-        io::stdout().flush()?;
     }
-
-    receive_handle.join().unwrap();
-
-    Ok(())
 }
+
